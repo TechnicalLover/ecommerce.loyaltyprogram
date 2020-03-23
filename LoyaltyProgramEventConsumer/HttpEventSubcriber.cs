@@ -16,7 +16,7 @@ namespace LoyaltyProgramEventConsumer
     {
         private readonly string _eventHost;
         private readonly ILogger _logger;
-        private long _start = 0, _chunkSize = 100;
+        private int _chunkSize = 100;
 
         public HttpEventSubcriber(string eventHost, ILogger logger)
         {
@@ -33,34 +33,72 @@ namespace LoyaltyProgramEventConsumer
 
         public virtual async Task HandleEvents(HttpResponseMessage @event)
         {
-            var content = await @event.Content.ReadAsStringAsync();
             this._logger.LogTrace("Start Handle Events");
+            var content = await @event.Content.ReadAsStringAsync();
             var events = JsonConvert.DeserializeObject<IEnumerable<Event>>(content);
-            Console.WriteLine(events);
-            Console.WriteLine(events.Count());
+            Console.WriteLine($"Number of eventst to handle: {events.Count()}");
+            var lastSucceededEvent = 0L;
             foreach (var ev in events)
             {
-                Console.WriteLine(ev.Content);
                 dynamic eventData = ev.Content;
                 Console.WriteLine("product name from data: " + (string)eventData.offer.productName);
-                this._start = Math.Max(this._start, ev.SequenceNumber + 1);
+                if (ShouldSendNotification(eventData))
+                {
+                    var isSucceeded = await SendNotification(eventData).ConfigureAwait(false);
+                    if (!isSucceeded)
+                        return;
+                }
+                lastSucceededEvent = Math.Max(lastSucceededEvent, ev.SequenceNumber + 1);
             }
+            await WriteStartNumber(lastSucceededEvent);
             this._logger.LogTrace("Start Handle Events");
         }
 
         public async Task<HttpResponseMessage> ReadEvents()
         {
-            this._logger.LogTrace($"Start Read Events from host:{this._eventHost}, with top:{this._start} & end:{this._start + this._chunkSize}");
-            var eventResource = $"/events/?start={this._start}&end={this._start + this._chunkSize}";
+            var startNumber = await ReadStartNumber().ConfigureAwait(false);
+            this._logger.LogTrace($"Start Read Events from host:{this._eventHost}, with top:{startNumber} & end:{startNumber + this._chunkSize}");
+            var eventResource = $"/events/?start={startNumber}&end={startNumber + this._chunkSize}";
             using (var httpClient = new HttpClient())
             {
                 httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 httpClient.BaseAddress = new Uri(this._eventHost);
-                var response = await httpClient.GetAsync(eventResource);
+                var response = await httpClient.GetAsync(eventResource).ConfigureAwait(false);
                 PrettyPrintResponse(response);
                 this._logger.LogTrace($"End Read Events from host:{this._eventHost}");
                 return response;
             }
+        }
+
+        public async Task ReadAndHandleEvents()
+        {
+            var @event = await ReadEvents();
+            if (IsValidEvent(@event))
+                await HandleEvents(@event);
+        }
+
+        private bool ShouldSendNotification(dynamic eventData)
+        {
+            // decide if notification should be sent base on business rules
+            return true;
+        }
+
+        private async Task<bool> SendNotification(dynamic eventData)
+        {
+            // user HttpClient to send command to notification microservice
+            // return true if the command succeeded, false otherwise
+            return true;
+        }
+
+        private async Task<long> ReadStartNumber()
+        {
+            // Read start number from database
+            return 0;
+        }
+
+        private async Task WriteStartNumber(long startNumber)
+        {
+            // Write start number to database
         }
 
         private async void PrettyPrintResponse(HttpResponseMessage response)

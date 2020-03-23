@@ -31,9 +31,7 @@ namespace LoyaltyProgramEventConsumer
             try
             {
                 this._logger.LogTrace("Start New Cycle");
-                var @event = await ReadEvents();
-                if (IsValidEvent(@event))
-                    await HandleEvents(@event);
+                await ReadAndHandleEvents();
                 this._logger.LogTrace("End Cycle");
                 this._timer.Change(0, Timeout.Infinite);
             }
